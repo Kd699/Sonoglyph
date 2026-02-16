@@ -182,7 +182,7 @@ export default function App() {
     setMandarinReviewCard(remaining.length ? remaining[0] : null)
   }
 
-  // Generate image from render prompt with retry logic
+  // Generate image via Puter.js (primary) with Pollinations fallback
   const generateImage = async (prompt: string, target: 'english' | 'mandarin') => {
     const loadSetter = target === 'english' ? setImageLoading : setMandarinImageLoading
     const urlSetter = target === 'english' ? setImageUrl : setMandarinImageUrl
@@ -192,14 +192,30 @@ export default function App() {
     urlSetter(null)
     errSetter('')
 
-    // Truncate prompt to avoid URL length issues; keep first 500 chars
     const truncated = prompt.length > 500 ? prompt.slice(0, 500) : prompt
-    const url = `https://image.pollinations.ai/prompt/${encodeURIComponent(truncated)}?width=1024&height=1024&model=flux&nologo=true`
 
-    const maxRetries = 3
+    // --- Provider 1: Puter.js (free, no API key, loaded via script tag) ---
+    if (typeof puter !== 'undefined' && puter.ai?.txt2img) {
+      try {
+        const imgEl = await puter.ai.txt2img(truncated, { model: 'dall-e-3' })
+        // puter.ai.txt2img returns an HTMLImageElement; extract its src as a data URL or blob
+        const src = imgEl.src
+        if (src) {
+          urlSetter(src)
+          loadSetter(false)
+          return
+        }
+      } catch {
+        // Puter.js failed; fall through to Pollinations fallback
+      }
+    }
+
+    // --- Provider 2: Pollinations.ai fallback (may be down) ---
+    const pollinationsUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(truncated)}?width=1024&height=1024&model=flux&nologo=true`
+    const maxRetries = 2
     for (let attempt = 0; attempt < maxRetries; attempt++) {
       try {
-        const res = await fetch(url)
+        const res = await fetch(pollinationsUrl)
         if (res.ok && res.headers.get('content-type')?.startsWith('image')) {
           const blob = await res.blob()
           const blobUrl = URL.createObjectURL(blob)
@@ -207,19 +223,19 @@ export default function App() {
           loadSetter(false)
           return
         }
-        // Non-OK response -- wait and retry
         if (attempt < maxRetries - 1) {
-          await new Promise(r => setTimeout(r, 3000 * (attempt + 1)))
+          await new Promise(r => setTimeout(r, 2000 * (attempt + 1)))
         }
       } catch {
         if (attempt < maxRetries - 1) {
-          await new Promise(r => setTimeout(r, 3000 * (attempt + 1)))
+          await new Promise(r => setTimeout(r, 2000 * (attempt + 1)))
         }
       }
     }
-    // All retries exhausted
+
+    // All providers exhausted
     loadSetter(false)
-    errSetter('Image generation failed after multiple attempts. The service may be temporarily overloaded -- please try again in a moment.')
+    errSetter('Image generation failed. Both Puter.js and Pollinations.ai were unavailable -- please try again in a moment.')
   }
 
   const generate = useCallback(async (refineInstruction?: string) => {

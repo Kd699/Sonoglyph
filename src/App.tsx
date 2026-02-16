@@ -66,6 +66,7 @@ interface MandarinResult {
   radical_tree: string
   radicals: Array<{ component: string; pinyin: string; meaning: string; symbolism: string; visual_description: string }>
   mnemonics: Array<{ type: string; bridge: string; explanation: string }>
+  phonetic_mapping?: PhoneticMap[]
   etymology: string
   scene_description: string
   render_prompt: string
@@ -1342,17 +1343,8 @@ export default function App() {
                               </div>
                             ))}
                           </div>
-                        </div>
-                        <div style={{ marginBottom: 16 }}>
-                          <div className="card-label">Character Type</div>
-                          <div className="character-type">
-                            <span className="type-badge">{rv.character_type.category} ({rv.character_type.category_pinyin})</span>
-                            <p className="type-description">{rv.character_type.explanation}</p>
-                          </div>
-                        </div>
-                        <div style={{ marginBottom: 16 }}>
-                          <div className="card-label">Mnemonics</div>
-                          <div className="mnemonic-bridges">
+                          <div className="mnemonic-bridges" style={{ marginTop: 16 }}>
+                            <div className="card-label">Mnemonics</div>
                             {rv.mnemonics.map((m, i) => (
                               <div key={i} className="mnemonic-item">
                                 <div className="mnemonic-type">{m.type.replace(/_/g, ' ')}</div>
@@ -1362,6 +1354,29 @@ export default function App() {
                             ))}
                           </div>
                         </div>
+                        <div style={{ marginBottom: 16 }}>
+                          <div className="card-label">Character Type</div>
+                          <div className="character-type">
+                            <span className="type-badge">{rv.character_type.category} ({rv.character_type.category_pinyin})</span>
+                            <p className="type-description">{rv.character_type.explanation}</p>
+                          </div>
+                        </div>
+                        {rv.phonetic_mapping && rv.phonetic_mapping.length > 0 && (
+                          <div style={{ marginBottom: 16 }}>
+                            <div className="card-label">Phonetic Mapping</div>
+                            <div className="phonetic-grid">
+                              {rv.phonetic_mapping.map((pm, i) => (
+                                <div className="phonetic-item" key={i}>
+                                  <div className="sound">{pm.sound}</div>
+                                  <div className="object">{pm.object}</div>
+                                  <div style={{ fontSize: 12, color: 'var(--text-dim)', marginTop: 4 }}>
+                                    {pm.role}
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
                         <div style={{ marginBottom: 16 }}>
                           <div className="card-label">Etymology</div>
                           <p style={{ fontSize: 14, lineHeight: 1.7 }}>{rv.etymology}</p>
@@ -1427,7 +1442,7 @@ export default function App() {
                 )}
               </div>
 
-              {/* Radical Tree */}
+              {/* Radical Decomposition + Mnemonics (merged) */}
               <div className="card">
                 <div className="card-label">Radical Decomposition</div>
                 <pre className="radical-tree">{r.radical_tree}</pre>
@@ -1437,6 +1452,16 @@ export default function App() {
                       <span className="radical-char">{rad.component}</span>
                       <span className="radical-pinyin">({rad.pinyin})</span>
                       <span className="radical-meaning">{rad.meaning}</span>
+                    </div>
+                  ))}
+                </div>
+                <div className="mnemonic-bridges" style={{ marginTop: 16 }}>
+                  <div className="card-label">Mnemonics</div>
+                  {r.mnemonics.map((m, i) => (
+                    <div key={i} className="mnemonic-item">
+                      <div className="mnemonic-type">{m.type.replace(/_/g, ' ')}</div>
+                      <p className="mnemonic-text">{m.bridge}</p>
+                      <p style={{ fontSize: 12, color: 'var(--text-dim)', marginTop: 4 }}>{m.explanation}</p>
                     </div>
                   ))}
                 </div>
@@ -1451,19 +1476,59 @@ export default function App() {
                 </div>
               </div>
 
-              {/* Mnemonics */}
-              <div className="card">
-                <div className="card-label">Mnemonics</div>
-                <div className="mnemonic-bridges">
-                  {r.mnemonics.map((m, i) => (
-                    <div key={i} className="mnemonic-item">
-                      <div className="mnemonic-type">{m.type.replace(/_/g, ' ')}</div>
-                      <p className="mnemonic-text">{m.bridge}</p>
-                      <p style={{ fontSize: 12, color: 'var(--text-dim)', marginTop: 4 }}>{m.explanation}</p>
-                    </div>
-                  ))}
+              {/* Phonetic Mapping */}
+              {r.phonetic_mapping && r.phonetic_mapping.length > 0 && (
+                <div className="card">
+                  <div className="card-label">Phonetic Mapping</div>
+                  <div className="phonetic-grid">
+                    {r.phonetic_mapping.map((pm, i) => (
+                      <div className="phonetic-item" key={i}>
+                        <div className="sound">{pm.sound}</div>
+                        <div className="object">{pm.object}</div>
+                        <div style={{ fontSize: 12, color: 'var(--text-dim)', marginTop: 4 }}>
+                          {pm.role}
+                        </div>
+                        <div style={{ display: 'flex', gap: 6, marginTop: 8 }}>
+                          <button
+                            className="refine-btn"
+                            style={{ fontSize: 11, padding: '4px 10px' }}
+                            disabled={loading}
+                            onClick={() => shuffleMapping(i)}
+                          >Shuffle</button>
+                          <button
+                            className="refine-btn"
+                            style={{ fontSize: 11, padding: '4px 10px' }}
+                            disabled={loading}
+                            onClick={() => { setRewriteIdx(rewriteIdx === i ? null : i); setRewriteText('') }}
+                          >Rewrite</button>
+                        </div>
+                        {rewriteIdx === i && (
+                          <div style={{ marginTop: 8, display: 'flex', gap: 6 }}>
+                            <input
+                              type="text"
+                              placeholder="e.g. use a trumpet instead"
+                              value={rewriteText}
+                              onChange={e => setRewriteText(e.target.value)}
+                              style={{
+                                flex: 1, padding: '6px 10px', fontSize: 12,
+                                background: 'var(--bg)', border: '1px solid var(--border)',
+                                borderRadius: 6, color: 'var(--text)',
+                              }}
+                              onKeyDown={e => { if (e.key === 'Enter') rewriteMapping(i) }}
+                            />
+                            <button
+                              className="generate-btn"
+                              style={{ fontSize: 11, padding: '6px 12px' }}
+                              disabled={loading || !rewriteText.trim()}
+                              onClick={() => rewriteMapping(i)}
+                            >Go</button>
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
                 </div>
-              </div>
+              )}
 
               {/* Etymology */}
               <div className="card">
@@ -1572,7 +1637,7 @@ export default function App() {
                   <p>{mandarinResult.definition}</p>
                 </div>
 
-                {/* Radical Tree */}
+                {/* Radical Decomposition + Mnemonics (merged) */}
                 <div className="card">
                   <div className="card-label">Radical Decomposition</div>
                   <pre className="radical-tree">{mandarinResult.radical_tree}</pre>
@@ -1582,6 +1647,16 @@ export default function App() {
                         <span className="radical-char">{r.component}</span>
                         <span className="radical-pinyin">({r.pinyin})</span>
                         <span className="radical-meaning">{r.meaning}</span>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="mnemonic-bridges" style={{ marginTop: 16 }}>
+                    <div className="card-label">Mnemonics</div>
+                    {mandarinResult.mnemonics.map((m, i) => (
+                      <div key={i} className="mnemonic-item">
+                        <div className="mnemonic-type">{m.type.replace(/_/g, ' ')}</div>
+                        <p className="mnemonic-text">{m.bridge}</p>
+                        <p style={{ fontSize: 12, color: 'var(--text-dim)', marginTop: 4 }}>{m.explanation}</p>
                       </div>
                     ))}
                   </div>
@@ -1596,19 +1671,59 @@ export default function App() {
                   </div>
                 </div>
 
-                {/* Mnemonics */}
-                <div className="card">
-                  <div className="card-label">Mnemonics</div>
-                  <div className="mnemonic-bridges">
-                    {mandarinResult.mnemonics.map((m, i) => (
-                      <div key={i} className="mnemonic-item">
-                        <div className="mnemonic-type">{m.type.replace(/_/g, ' ')}</div>
-                        <p className="mnemonic-text">{m.bridge}</p>
-                        <p style={{ fontSize: 12, color: 'var(--text-dim)', marginTop: 4 }}>{m.explanation}</p>
-                      </div>
-                    ))}
+                {/* Phonetic Mapping */}
+                {mandarinResult.phonetic_mapping && mandarinResult.phonetic_mapping.length > 0 && (
+                  <div className="card">
+                    <div className="card-label">Phonetic Mapping</div>
+                    <div className="phonetic-grid">
+                      {mandarinResult.phonetic_mapping.map((pm, i) => (
+                        <div className="phonetic-item" key={i}>
+                          <div className="sound">{pm.sound}</div>
+                          <div className="object">{pm.object}</div>
+                          <div style={{ fontSize: 12, color: 'var(--text-dim)', marginTop: 4 }}>
+                            {pm.role}
+                          </div>
+                          <div style={{ display: 'flex', gap: 6, marginTop: 8 }}>
+                            <button
+                              className="refine-btn"
+                              style={{ fontSize: 11, padding: '4px 10px' }}
+                              disabled={loading}
+                              onClick={() => shuffleMapping(i)}
+                            >Shuffle</button>
+                            <button
+                              className="refine-btn"
+                              style={{ fontSize: 11, padding: '4px 10px' }}
+                              disabled={loading}
+                              onClick={() => { setRewriteIdx(rewriteIdx === i ? null : i); setRewriteText('') }}
+                            >Rewrite</button>
+                          </div>
+                          {rewriteIdx === i && (
+                            <div style={{ marginTop: 8, display: 'flex', gap: 6 }}>
+                              <input
+                                type="text"
+                                placeholder="e.g. use a trumpet instead"
+                                value={rewriteText}
+                                onChange={e => setRewriteText(e.target.value)}
+                                style={{
+                                  flex: 1, padding: '6px 10px', fontSize: 12,
+                                  background: 'var(--bg)', border: '1px solid var(--border)',
+                                  borderRadius: 6, color: 'var(--text)',
+                                }}
+                                onKeyDown={e => { if (e.key === 'Enter') rewriteMapping(i) }}
+                              />
+                              <button
+                                className="generate-btn"
+                                style={{ fontSize: 11, padding: '6px 12px' }}
+                                disabled={loading || !rewriteText.trim()}
+                                onClick={() => rewriteMapping(i)}
+                              >Go</button>
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
                   </div>
-                </div>
+                )}
 
                 {/* Etymology */}
                 <div className="card">

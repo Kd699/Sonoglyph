@@ -128,6 +128,8 @@ export default function App() {
   const [mandarinImageError, setMandarinImageError] = useState('')
   const [showMandarinAnswer, setShowMandarinAnswer] = useState(false)
   const [showHints, setShowHints] = useState(false)
+  const [practiceAll, setPracticeAll] = useState(false)
+  const [mandarinPracticeAll, setMandarinPracticeAll] = useState(false)
 
   useEffect(() => { saveHistory(history) }, [history])
   useEffect(() => { saveCards(cards) }, [cards])
@@ -150,36 +152,78 @@ export default function App() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mandarinResult])
 
-  const startReview = () => {
-    const due = cards.filter(c => c.nextReview <= Date.now())
-    setReviewCard(due.length ? due[0] : null)
+  const shuffleArray = <T,>(arr: T[]): T[] => {
+    const shuffled = [...arr]
+    for (let i = shuffled.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]]
+    }
+    return shuffled
+  }
+
+  const [practiceQueue, setPracticeQueue] = useState<SM2Card[]>([])
+  const [mandarinPracticeQueue, setMandarinPracticeQueue] = useState<MandarinSM2Card[]>([])
+
+  const startReview = (practice?: boolean) => {
+    const isPractice = practice ?? practiceAll
+    if (isPractice) {
+      const shuffled = shuffleArray(cards)
+      setPracticeQueue(shuffled.slice(1))
+      setReviewCard(shuffled.length ? shuffled[0] : null)
+    } else {
+      const due = cards.filter(c => c.nextReview <= Date.now())
+      setReviewCard(due.length ? due[0] : null)
+    }
     setShowAnswer(false)
   }
 
   const rateCard = (quality: number) => {
     if (!reviewCard) return
-    const updated = sm2(reviewCard, quality)
-    setCards(prev => prev.map(c => c.word === updated.word ? updated : c))
+    if (!practiceAll) {
+      const updated = sm2(reviewCard, quality)
+      setCards(prev => prev.map(c => c.word === updated.word ? updated : c))
+    }
     setShowAnswer(false)
-    const remaining = cards.filter(c => c.nextReview <= Date.now() && c.word !== reviewCard.word)
-    setReviewCard(remaining.length ? remaining[0] : null)
+    if (practiceAll) {
+      const next = practiceQueue[0] || null
+      setPracticeQueue(prev => prev.slice(1))
+      setReviewCard(next)
+    } else {
+      const remaining = cards.filter(c => c.nextReview <= Date.now() && c.word !== reviewCard.word)
+      setReviewCard(remaining.length ? remaining[0] : null)
+    }
   }
 
-  const startMandarinReview = () => {
-    const due = mandarinCards.filter(c => c.nextReview <= Date.now())
-    setMandarinReviewCard(due.length ? due[0] : null)
+  const startMandarinReview = (practice?: boolean) => {
+    const isPractice = practice ?? mandarinPracticeAll
+    if (isPractice) {
+      const shuffled = shuffleArray(mandarinCards)
+      setMandarinPracticeQueue(shuffled.slice(1))
+      setMandarinReviewCard(shuffled.length ? shuffled[0] : null)
+    } else {
+      const due = mandarinCards.filter(c => c.nextReview <= Date.now())
+      setMandarinReviewCard(due.length ? due[0] : null)
+    }
     setShowMandarinAnswer(false)
     setShowHints(false)
   }
 
   const rateMandarinCard = (quality: number) => {
     if (!mandarinReviewCard) return
-    const updated = sm2(mandarinReviewCard, quality)
-    setMandarinCards(prev => prev.map(c => c.character === updated.character ? updated : c))
+    if (!mandarinPracticeAll) {
+      const updated = sm2(mandarinReviewCard, quality)
+      setMandarinCards(prev => prev.map(c => c.character === updated.character ? updated : c))
+    }
     setShowMandarinAnswer(false)
     setShowHints(false)
-    const remaining = mandarinCards.filter(c => c.nextReview <= Date.now() && c.character !== mandarinReviewCard.character)
-    setMandarinReviewCard(remaining.length ? remaining[0] : null)
+    if (mandarinPracticeAll) {
+      const next = mandarinPracticeQueue[0] || null
+      setMandarinPracticeQueue(prev => prev.slice(1))
+      setMandarinReviewCard(next)
+    } else {
+      const remaining = mandarinCards.filter(c => c.nextReview <= Date.now() && c.character !== mandarinReviewCard.character)
+      setMandarinReviewCard(remaining.length ? remaining[0] : null)
+    }
   }
 
   // Generate image via Puter.js (primary) with Pollinations fallback
@@ -430,10 +474,32 @@ export default function App() {
         {/* ===== REVIEW TAB ===== */}
         {tab === 'review' && (
           <div>
+            {cards.length > 0 && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16 }}>
+                <button
+                  className="refine-btn"
+                  style={practiceAll ? {
+                    borderColor: '#f59e0b', color: '#f59e0b', background: 'rgba(245, 158, 11, 0.1)'
+                  } : {}}
+                  onClick={() => {
+                    const next = !practiceAll
+                    setPracticeAll(next)
+                    startReview(next)
+                  }}
+                >
+                  {practiceAll ? 'Practice All: ON' : 'Practice All: OFF'}
+                </button>
+                {practiceAll && (
+                  <span style={{ fontSize: 12, color: '#f59e0b', fontWeight: 500 }}>
+                    Practice mode -- ratings won't affect schedule
+                  </span>
+                )}
+              </div>
+            )}
             {!reviewCard ? (
               <div className="card" style={{ opacity: 1, textAlign: 'center', padding: 40 }}>
                 <p style={{ color: 'var(--text-dim)', fontSize: 16 }}>
-                  {cards.length === 0 ? 'No cards yet -- encode some words first!' : 'All caught up! No cards due for review.'}
+                  {cards.length === 0 ? 'No cards yet -- encode some words first!' : practiceAll ? 'No cards available.' : 'All caught up! No cards due for review.'}
                 </p>
               </div>
             ) : (
@@ -474,10 +540,32 @@ export default function App() {
         {/* ===== MANDARIN REVIEW TAB ===== */}
         {tab === 'mandarin-review' && (
           <div>
+            {mandarinCards.length > 0 && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16 }}>
+                <button
+                  className="refine-btn"
+                  style={mandarinPracticeAll ? {
+                    borderColor: '#f59e0b', color: '#f59e0b', background: 'rgba(245, 158, 11, 0.1)'
+                  } : {}}
+                  onClick={() => {
+                    const next = !mandarinPracticeAll
+                    setMandarinPracticeAll(next)
+                    startMandarinReview(next)
+                  }}
+                >
+                  {mandarinPracticeAll ? 'Practice All: ON' : 'Practice All: OFF'}
+                </button>
+                {mandarinPracticeAll && (
+                  <span style={{ fontSize: 12, color: '#f59e0b', fontWeight: 500 }}>
+                    Practice mode -- ratings won't affect schedule
+                  </span>
+                )}
+              </div>
+            )}
             {!mandarinReviewCard ? (
               <div className="card" style={{ opacity: 1, textAlign: 'center', padding: 40 }}>
                 <p style={{ color: 'var(--text-dim)', fontSize: 16 }}>
-                  {mandarinCards.length === 0 ? 'No Mandarin cards yet -- decompose some characters first!' : 'All caught up! No Mandarin cards due for review.'}
+                  {mandarinCards.length === 0 ? 'No Mandarin cards yet -- decompose some characters first!' : mandarinPracticeAll ? 'No cards available.' : 'All caught up! No Mandarin cards due for review.'}
                 </p>
               </div>
             ) : (

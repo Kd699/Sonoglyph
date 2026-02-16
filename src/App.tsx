@@ -112,6 +112,7 @@ export default function App() {
   // Image generation
   const [imageUrl, setImageUrl] = useState<string | null>(null)
   const [imageLoading, setImageLoading] = useState(false)
+  const [imageError, setImageError] = useState('')
 
   // Shuffle/Rewrite state
   const [rewriteIdx, setRewriteIdx] = useState<number | null>(null)
@@ -124,6 +125,7 @@ export default function App() {
   const [mandarinReviewCard, setMandarinReviewCard] = useState<MandarinSM2Card | null>(null)
   const [mandarinImageUrl, setMandarinImageUrl] = useState<string | null>(null)
   const [mandarinImageLoading, setMandarinImageLoading] = useState(false)
+  const [mandarinImageError, setMandarinImageError] = useState('')
   const [showMandarinAnswer, setShowMandarinAnswer] = useState(false)
   const [showHints, setShowHints] = useState(false)
 
@@ -134,9 +136,19 @@ export default function App() {
   const dueCards = cards.filter(c => c.nextReview <= Date.now())
   const dueMandarinCards = mandarinCards.filter(c => c.nextReview <= Date.now())
 
-  // Clear image when result changes
-  useEffect(() => { setImageUrl(null) }, [result])
-  useEffect(() => { setMandarinImageUrl(null) }, [mandarinResult])
+  // Clear image when result changes (and revoke old blob URLs to free memory)
+  useEffect(() => {
+    if (imageUrl) URL.revokeObjectURL(imageUrl)
+    setImageUrl(null)
+    setImageError('')
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [result])
+  useEffect(() => {
+    if (mandarinImageUrl) URL.revokeObjectURL(mandarinImageUrl)
+    setMandarinImageUrl(null)
+    setMandarinImageError('')
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mandarinResult])
 
   const startReview = () => {
     const due = cards.filter(c => c.nextReview <= Date.now())
@@ -170,14 +182,44 @@ export default function App() {
     setMandarinReviewCard(remaining.length ? remaining[0] : null)
   }
 
-  // Generate image from render prompt
-  const generateImage = (prompt: string, target: 'english' | 'mandarin') => {
-    const setter = target === 'english' ? setImageLoading : setMandarinImageLoading
+  // Generate image from render prompt with retry logic
+  const generateImage = async (prompt: string, target: 'english' | 'mandarin') => {
+    const loadSetter = target === 'english' ? setImageLoading : setMandarinImageLoading
     const urlSetter = target === 'english' ? setImageUrl : setMandarinImageUrl
-    setter(true)
-    const url = `https://image.pollinations.ai/prompt/${encodeURIComponent(prompt)}?width=1024&height=1024&model=flux&nologo=true`
-    urlSetter(url)
-    // Loading state is cleared when image loads or errors (via onLoad/onError on the img tag)
+    const errSetter = target === 'english' ? setImageError : setMandarinImageError
+
+    loadSetter(true)
+    urlSetter(null)
+    errSetter('')
+
+    // Truncate prompt to avoid URL length issues; keep first 500 chars
+    const truncated = prompt.length > 500 ? prompt.slice(0, 500) : prompt
+    const url = `https://image.pollinations.ai/prompt/${encodeURIComponent(truncated)}?width=1024&height=1024&model=flux&nologo=true`
+
+    const maxRetries = 3
+    for (let attempt = 0; attempt < maxRetries; attempt++) {
+      try {
+        const res = await fetch(url)
+        if (res.ok && res.headers.get('content-type')?.startsWith('image')) {
+          const blob = await res.blob()
+          const blobUrl = URL.createObjectURL(blob)
+          urlSetter(blobUrl)
+          loadSetter(false)
+          return
+        }
+        // Non-OK response -- wait and retry
+        if (attempt < maxRetries - 1) {
+          await new Promise(r => setTimeout(r, 3000 * (attempt + 1)))
+        }
+      } catch {
+        if (attempt < maxRetries - 1) {
+          await new Promise(r => setTimeout(r, 3000 * (attempt + 1)))
+        }
+      }
+    }
+    // All retries exhausted
+    loadSetter(false)
+    errSetter('Image generation failed after multiple attempts. The service may be temporarily overloaded -- please try again in a moment.')
   }
 
   const generate = useCallback(async (refineInstruction?: string) => {
@@ -307,9 +349,6 @@ export default function App() {
     setError('')
     setTab('encode')
   }
-
-  const currentImageUrl = tab === 'mandarin' ? mandarinImageUrl : imageUrl
-  const currentImageLoading = tab === 'mandarin' ? mandarinImageLoading : imageLoading
 
   return (
     <div className="app">
@@ -580,11 +619,14 @@ export default function App() {
                   >
                     {mandarinImageLoading ? 'Generating...' : 'Generate Image'}
                   </button>
-                  {mandarinImageLoading && !mandarinImageUrl && (
+                  {mandarinImageLoading && (
                     <div className="loading" style={{ marginTop: 16 }}>
                       <div className="dots"><span /><span /><span /></div>
-                      <span>Generating image...</span>
+                      <span>Generating image (this may take a moment)...</span>
                     </div>
+                  )}
+                  {mandarinImageError && (
+                    <div className="error" style={{ marginTop: 12 }}>{mandarinImageError}</div>
                   )}
                   {mandarinImageUrl && (
                     <div className="generated-image-container">
@@ -592,10 +634,8 @@ export default function App() {
                         src={mandarinImageUrl}
                         alt="Mnemonic scene"
                         className="generated-image"
-                        onLoad={() => setMandarinImageLoading(false)}
-                        onError={() => setMandarinImageLoading(false)}
                       />
-                      <a href={mandarinImageUrl} target="_blank" rel="noopener noreferrer" className="download-btn">
+                      <a href={mandarinImageUrl} download="sonoglyph-mandarin-image.jpg" className="download-btn">
                         Download Image
                       </a>
                     </div>
@@ -730,16 +770,19 @@ export default function App() {
                 <button
                   className="generate-btn"
                   onClick={() => generateImage(result.render_prompt, 'english')}
-                  disabled={currentImageLoading}
+                  disabled={imageLoading}
                   style={{ width: '100%' }}
                 >
                   {imageLoading ? 'Generating...' : 'Generate Image'}
                 </button>
-                {imageLoading && !imageUrl && (
+                {imageLoading && (
                   <div className="loading" style={{ marginTop: 16 }}>
                     <div className="dots"><span /><span /><span /></div>
-                    <span>Generating image...</span>
+                    <span>Generating image (this may take a moment)...</span>
                   </div>
+                )}
+                {imageError && (
+                  <div className="error" style={{ marginTop: 12 }}>{imageError}</div>
                 )}
                 {imageUrl && (
                   <div className="generated-image-container">
@@ -747,10 +790,8 @@ export default function App() {
                       src={imageUrl}
                       alt="Mnemonic scene"
                       className="generated-image"
-                      onLoad={() => setImageLoading(false)}
-                      onError={() => setImageLoading(false)}
                     />
-                    <a href={imageUrl} target="_blank" rel="noopener noreferrer" className="download-btn">
+                    <a href={imageUrl} download="sonoglyph-image.jpg" className="download-btn">
                       Download Image
                     </a>
                   </div>

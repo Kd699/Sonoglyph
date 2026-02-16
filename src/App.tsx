@@ -177,7 +177,7 @@ export default function App() {
     setter(true)
     const url = `https://image.pollinations.ai/prompt/${encodeURIComponent(prompt)}?width=1024&height=1024&model=flux&nologo=true`
     urlSetter(url)
-    setter(false)
+    // Loading state is cleared when image loads or errors (via onLoad/onError on the img tag)
   }
 
   const generate = useCallback(async (refineInstruction?: string) => {
@@ -580,9 +580,21 @@ export default function App() {
                   >
                     {mandarinImageLoading ? 'Generating...' : 'Generate Image'}
                   </button>
+                  {mandarinImageLoading && !mandarinImageUrl && (
+                    <div className="loading" style={{ marginTop: 16 }}>
+                      <div className="dots"><span /><span /><span /></div>
+                      <span>Generating image...</span>
+                    </div>
+                  )}
                   {mandarinImageUrl && (
                     <div className="generated-image-container">
-                      <img src={mandarinImageUrl} alt="Mnemonic scene" className="generated-image" />
+                      <img
+                        src={mandarinImageUrl}
+                        alt="Mnemonic scene"
+                        className="generated-image"
+                        onLoad={() => setMandarinImageLoading(false)}
+                        onError={() => setMandarinImageLoading(false)}
+                      />
                       <a href={mandarinImageUrl} target="_blank" rel="noopener noreferrer" className="download-btn">
                         Download Image
                       </a>
@@ -723,9 +735,21 @@ export default function App() {
                 >
                   {imageLoading ? 'Generating...' : 'Generate Image'}
                 </button>
+                {imageLoading && !imageUrl && (
+                  <div className="loading" style={{ marginTop: 16 }}>
+                    <div className="dots"><span /><span /><span /></div>
+                    <span>Generating image...</span>
+                  </div>
+                )}
                 {imageUrl && (
                   <div className="generated-image-container">
-                    <img src={imageUrl} alt="Mnemonic scene" className="generated-image" />
+                    <img
+                      src={imageUrl}
+                      alt="Mnemonic scene"
+                      className="generated-image"
+                      onLoad={() => setImageLoading(false)}
+                      onError={() => setImageLoading(false)}
+                    />
                     <a href={imageUrl} target="_blank" rel="noopener noreferrer" className="download-btn">
                       Download Image
                     </a>
